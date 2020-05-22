@@ -1,0 +1,126 @@
+pipeline:
+  running-test:
+    image: golang
+    commands:
+      - cd app
+      - go mod vendor
+      - go test --short -mod=vendor --cover ./...
+    when:
+      event:
+        include:
+          - push
+          - pull_request
+        exclude:
+          - tag
+      branch: [master]
+
+#  renewing_vault_token:
+#    image: vault:1.2.4
+#    environment:
+#      - VAULT_ADDR=https://vault.tools.walmartdigital.cl
+#    secrets:
+#      - source: vault_token
+#        target: VAULT_TOKEN
+#    commands:
+#      - vault token renew > /dev/null
+
+#  terraforming_staging:
+#    image: jmccann/drone-terraform:6.1-0.12.11
+#    actions:
+#      - plan
+#      - apply
+#    sensitive: true
+#    root_dir: terraform/traffic-manager
+#    init_options:
+#      backend-config:
+#        - "scheme=https"
+#        - "path=arcadia/go-base-project/staging/traffic-manager/terraform/terraform-state"
+#        - "datacenter=eastus2"
+#    vars:
+#      consul_base_path: arcadia/go-base-project/staging/traffic-manager
+#      email: chin.dou@walmart.com
+#      vault_cloudflare_apikey_path: secret/underworld/cloudflare-apikey
+#      environment: staging
+#    environment:
+#      - VAULT_ADDR=https://vault.tools.walmartdigital.cl
+#      - CONSUL_HTTP_ADDR=consul.tools.walmartdigital.cl
+#      - CONSUL_HTTP_SSL=true
+#    secrets:
+#      - source: vault_token
+#        target: VAULT_TOKEN
+#      - source: consul_http_token
+#        target: CONSUL_HTTP_TOKEN
+#      - source: azure_tenant
+#        target: ARM_TENANT_ID
+#      - source: azure_subscription
+#        target: ARM_SUBSCRIPTION_ID
+#      - source: azure_client
+#        target: ARM_CLIENT_ID
+#      - source: azure_secret
+#        target: ARM_CLIENT_SECRET
+#    when:
+#      event: [push]
+#      branch: [master]
+
+  publishing-staging:
+    image: plugins/docker
+    registry: walmartdigital.azurecr.io
+    repo: walmartdigital.azurecr.io/go-base-project
+    build_args:
+      - VERSION=go-base-project-version-${DRONE_BUILD_NUMBER}
+    tags:
+      - latest
+      - staging-${DRONE_BUILD_NUMBER}
+    secrets: [ docker_username, docker_password ]
+    dockerfile: Dockerfile
+    when:
+      event: [push, pull_request]
+      branch: [master]
+
+#  terraforming_production:
+#    image: jmccann/drone-terraform:6.1-0.12.11
+#    actions:
+#      - plan
+#      - apply
+#    sensitive: true
+#    root_dir: terraform/traffic-manager
+#    init_options:
+#      backend-config:
+#        - "scheme=https"
+#        - "path=arcadia/go-base-project/production/traffic-manager/terraform/terraform-state"
+#        - "datacenter=eastus2"
+#    vars:
+#      consul_base_path: arcadia/go-base-project/production/traffic-manager
+#      email: chin.dou@walmart.com
+#      vault_cloudflare_apikey_path: secret/underworld/cloudflare-apikey
+#      environment: production
+#    environment:
+#      - VAULT_ADDR=https://vault.tools.walmartdigital.cl
+#      - CONSUL_HTTP_ADDR=consul.tools.walmartdigital.cl
+#      - CONSUL_HTTP_SSL=true
+#    secrets:
+#      - source: vault_token
+#        target: VAULT_TOKEN
+#      - source: consul_http_token
+#        target: CONSUL_HTTP_TOKEN
+#      - source: azure_tenant
+#        target: ARM_TENANT_ID
+#      - source: azure_subscription
+#        target: ARM_SUBSCRIPTION_ID
+#      - source: azure_client
+#        target: ARM_CLIENT_ID
+#      - source: azure_secret
+#        target: ARM_CLIENT_SECRET
+#    when:
+#      event: [tag]
+
+  publishing-production:
+    image: alpine:3.7
+    commands:
+      - 'apk --update add curl'
+      - 'export DESIRED_IMAGE_NUMBER=$(echo ${DRONE_TAG##v} | sed "s/[^0-9]//g")'
+      - 'export MANIFEST=$(curl --show-error --fail -s -u "$${DOCKER_USERNAME}:$${DOCKER_PASSWORD}" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "https://walmartdigital.azurecr.io/v2/go-base-project/manifests/staging-$${DESIRED_IMAGE_NUMBER}")'
+      - 'curl --show-error --fail -s -u "$${DOCKER_USERNAME}:$${DOCKER_PASSWORD}" -X PUT -H "Content-Type: application/vnd.docker.distribution.manifest.v2+json" -d "$${MANIFEST}" "https://walmartdigital.azurecr.io/v2/go-base-project/manifests/release-$${DESIRED_IMAGE_NUMBER}"'
+    secrets: [ docker_username, docker_password ]
+    when:
+      event: [tag]

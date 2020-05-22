@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcadia
+  labels:
+    name: arcadia
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-configmap
+  namespace: arcadia
+data:
+  HERMES_LOGS_FILE_PATH: "/var/log/hermes.log"
+  HERMES_KAFKA_BROKERS: "192.168.1.3:9092"
+  HERMES_COCKROACH_HOST: "192.168.1.3"
+  HERMES_COCKROACH_PORT: "26257"
+  HERMES_COCKROACH_DATABASE: "hermes"
+  HERMES_COCKROACH_USER: "root"
+  HERMES_COCKROACH_PASSWORD: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: arcadia
+  name: hermes
+  annotations:
+    flux.weave.works/automated: "true"
+    flux.weave.works/tag.hermes: glob:b-*
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hermes
+  template:
+    metadata:
+      labels:
+        app: hermes
+    spec:
+      containers:
+        - name: hermes
+          image: walmartdigital.azurecr.io/hermes
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "250m"
+              memory: "512Mi"
+          envFrom:
+            - configMapRef:
+                name: hermes-configmap
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      #imagePullSecrets:
+      #  - name: regcred
+      volumes:
+        - name: varlog
+          emptyDir: {}
+      #  - name: fluentd-conf
+      #    configMap:
+      #      name: fluentd-conf
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes
+  namespace: arcadia
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: hermes
+  type: NodePort

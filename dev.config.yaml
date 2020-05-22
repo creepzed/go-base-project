@@ -1,0 +1,16 @@
+feature:
+ flags:
+  login: true
+  send: true
+  update_states: true
+datasource:
+ type: "cockroachdb"
+ host: "localhost"
+ port: 26257
+ database: "<dbname>"
+ user: "root"
+ password: ""
+jwt:
+ username: admin
+ password: secreto
+ duration: 43200
